@@ -1,8 +1,9 @@
 # mtgpu-steam-fex
 
-在 **Ubuntu 24.04 ARM64 + 摩尔线程 M1000（MTGPU）** 上，用 **Steam（linuxarm64 public-beta）
-+ FEX-Emu + Proton ARM64** 运行 x86_64 Windows 游戏的完整方案：安装脚本、Steam 兼容工具、
-720p Game Mode、独立 Xorg 配置与逐游戏兼容记录。
+在 **Ubuntu 24.04 ARM64 + 摩尔线程 M1000（MTGPU）** 上，用
+**Steam（linuxarm64 public-beta）+ FEX-Emu + Proton ARM64**
+运行 x86_64 Windows 游戏的完整方案：安装脚本、Steam 兼容工具、720p Game Mode、
+独立 Xorg 配置与逐游戏兼容记录。
 
 状态：**可玩**。已实测进入游戏并长时间运行：
 

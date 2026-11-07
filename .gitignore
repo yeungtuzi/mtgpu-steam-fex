@@ -1,0 +1,15 @@
+# 调研/试错记录不提交
+dev-docs/
+
+# 下载与解包产物（不入库）
+downloads/
+*.tar.xz
+*.sqsh
+*.deb
+*.zip
+
+# 运行期
+*.log
+__pycache__/
+__pycache__/
+*.pyc

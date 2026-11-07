@@ -1,0 +1,12 @@
+[Unit]
+Description=M1000 game mode hotkey (Meta+Shift+G)
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/steamos/lib/m1000-hotkeyd.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

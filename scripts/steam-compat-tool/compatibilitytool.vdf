@@ -1,0 +1,13 @@
+"compatibilitytools"
+{
+  "compat_tools"
+  {
+    "M1000ARM64"
+    {
+      "install_path" "."
+      "display_name" "M1000 ARM64 Wine"
+      "from_oslist"  "windows"
+      "to_oslist"    "linux"
+    }
+  }
+}

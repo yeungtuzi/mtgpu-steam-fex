@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=M1000 Game Mode Daemon
+Comment=D-Bus service for the game-mode shortcut
+Exec=/usr/bin/python3 /opt/steamos/lib/m1000-gamemode-daemon.py
+Icon=applications-games
+Terminal=false
+NoDisplay=true
+X-KDE-autostart-after=panel

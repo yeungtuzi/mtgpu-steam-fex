@@ -1,0 +1,11 @@
+{
+  "KPlugin": {
+    "Id": "m1000-gamemode",
+    "Name": "M1000 Game Mode",
+    "Description": "Meta+Shift+G exits M1000 game mode",
+    "Version": "1.0",
+    "License": "MIT",
+    "EnabledByDefault": true,
+    "ServiceTypes": ["KWin/Script"]
+  }
+}

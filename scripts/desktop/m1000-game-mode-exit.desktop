@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Exit Game Mode
+Comment=Restore the original KDE mode and scale
+Exec=/opt/steamos/bin/game-mode stop
+Icon=applications-games
+Terminal=false
+Categories=Game;

@@ -1,0 +1,6 @@
+"manifest"
+{
+    "version" "2"
+    "commandline" "/proton %verb%"
+    "require_tool_appid" "0"
+}

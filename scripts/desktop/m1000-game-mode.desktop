@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Game Mode - Steam
+Comment=Switch to 1280x720 and open Steam Big Picture
+Exec=/opt/steamos/bin/game-mode start
+Icon=applications-games
+Terminal=false
+Categories=Game;

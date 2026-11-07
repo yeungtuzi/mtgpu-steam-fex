@@ -1,0 +1,144 @@
+#!/bin/bash
+# Steam compatibility tool: run an x86_64 Windows game through Proton 11
+# (ARM64)'s arm64 Wine on the Moore Threads M1000, with SteamAPI working.
+#
+# Steam invokes:  proton waitforexitandrun <exe> [args...]
+#
+# Why a wrapper instead of Proton itself:
+#   * Proton distributes DXVK 2.7, which reports "No adapters found" on M1000;
+#     we need DXVK 2.3.1.
+#   * Proton's own prefix layout is required for SteamAPI (lsteamclient), so we
+#     reuse the prefix Proton created instead of a hand-made one.
+#   * KWin's rootless Xwayland does not map Wine toplevel windows on this box,
+#     so the default is a dedicated Xorg on :3 with mutter as WM.
+#
+# Tunables (env):
+#   M1000_DISPLAY=:3        display to run on (":0" = KDE/Xwayland, no Xorg)
+#   M1000_PREFIX=...        wine prefix (defaults to the Proton-created one)
+#   M1000_DXVK_DIR=...      dir containing d3d11/dxgi DLLs (2.3.1)
+#   M1000_SAVE=...          optional user1.dat to install
+#   M1000_NO_XORG=1         never start Xorg/mutter
+set -u
+
+verb="${1:-}"; shift || true
+exe="${1:-}"; shift || true
+[ -n "$exe" ] || { echo "proton: missing executable" >&2; exit 2; }
+
+P="${M1000_PROTON:-/opt/steamos/steam/steamapps/common/Proton 11.0 (ARM64)}"
+STEAM="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-/opt/steamos/steam}"
+_default_pfx="/opt/steamos/steam/steamapps/compatdata/${SteamAppId:-367520}-arm64/pfx"
+[ -d "$_default_pfx" ] || _default_pfx=/opt/steamos/steam/steamapps/compatdata/367520-arm64/pfx
+PREFIX="${M1000_PREFIX:-$_default_pfx}"
+DISPLAY_NUM="${M1000_DISPLAY:-:0}"
+WORK="${M1000_WORK_DIR:-$HOME/.local/share/m1000/work}"
+mkdir -p "$WORK"
+LOG="$WORK/compat.log"
+exec >>"$LOG" 2>&1
+echo "=== $(date -Is) verb=$verb exe=$exe prefix=$PREFIX display=$DISPLAY_NUM"
+
+if [ "$DISPLAY_NUM" = ":0" ]; then
+    export XAUTHORITY="${XAUTHORITY:-$(ls /run/user/1000/xauth_* 2>/dev/null | head -1)}"
+else
+    export XAUTHORITY=
+fi
+export DISPLAY="$DISPLAY_NUM" XDG_RUNTIME_DIR=/run/user/1000
+export WINEPREFIX="$PREFIX"
+export WINESERVER="$P/files/bin-arm64/wineserver"
+export WINEDLLPATH="$P/files/lib/wine"
+export LD_LIBRARY_PATH="$P/files/lib/aarch64-linux-gnu:$P/files/lib:${LD_LIBRARY_PATH:-}"
+export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM"
+export SteamAppId="${SteamAppId:-367520}" SteamGameId="${SteamGameId:-367520}"
+export DXVK_HUD="${DXVK_HUD:-fps,devinfo}"
+export FEX_TSOENABLED="${FEX_TSOENABLED:-0}"
+
+# 1. Dedicated Xorg + WM unless told to use the desktop display.
+if [ "$DISPLAY_NUM" != ":0" ] && [ "${M1000_NO_XORG:-0}" != "1" ]; then
+    if ! xdpyinfo >/dev/null 2>&1; then
+        sudo -n setsid Xorg "$DISPLAY_NUM" vt8 -config /opt/steamos/xorg-m1000.conf \
+            -noreset -nolisten tcp -logfile "$WORK/xorg-m1000.log" >/dev/null 2>&1 &
+        for _ in $(seq 1 40); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.5; done
+        sudo -n chvt 8 2>/dev/null || true
+    fi
+    if ! pgrep -x mutter >/dev/null 2>&1; then
+        setsid mutter --replace >/dev/null 2>&1 &
+        sleep 2
+    fi
+fi
+
+# 2. Steam bridge inside the prefix (lsteamclient + legacycompat DLLs).
+steam_dir="$PREFIX/drive_c/Program Files (x86)/Steam"
+mkdir -p "$steam_dir"
+for f in steamclient.dll steamclient64.dll Steam.dll GameOverlayRenderer64.dll; do
+    [ -f "$steam_dir/$f" ] || cp -n "$STEAM/legacycompat/$f" "$steam_dir/$f" 2>/dev/null || true
+done
+if [ ! -e "$PREFIX/drive_c/windows/system32/lsteamclient.dll" ]; then
+    ln -sf "$P/files/lib/wine/aarch64-windows/lsteamclient.dll" \
+        "$PREFIX/drive_c/windows/system32/lsteamclient.dll" 2>/dev/null || true
+fi
+
+# 3. DXVK 2.3.1 next to the game exe; native override beats Proton's DXVK 2.7.
+game_dir=$(dirname "$exe")
+dxvk="${M1000_DXVK_DIR:-/opt/steamos/src/dxvk-2.3.1/build}"
+if [ -f "$dxvk/src/d3d11/d3d11.dll" ]; then
+    src11="$dxvk/src/d3d11/d3d11.dll"; srcgi="$dxvk/src/dxgi/dxgi.dll"
+elif [ -f "/opt/steamos/steam/steamapps/common/Proton 8.0/dist/lib64/wine/dxvk/d3d11.dll" ]; then
+    d="/opt/steamos/steam/steamapps/common/Proton 8.0/dist/lib64/wine/dxvk"
+    src11="$d/d3d11.dll"; srcgi="$d/dxgi.dll"
+else
+    src11=""; srcgi=""
+fi
+if [ -n "$src11" ]; then
+    for pair in "$src11:$game_dir/d3d11.dll" "$srcgi:$game_dir/dxgi.dll"; do
+        s=${pair%%:*}; d=${pair#*:}
+        [ -f "$d" ] || cp -f "$s" "$d"
+        if [ -w /opt/steamos/INSTALL-MANIFEST.tsv ] && ! grep -qF "$d" /opt/steamos/INSTALL-MANIFEST.tsv 2>/dev/null; then
+            printf 'file\t%s\t%s\n' "$d" "$(sha256sum "$d" | cut -d' ' -f1)" >> /opt/steamos/INSTALL-MANIFEST.tsv
+        fi
+    done
+    export WINEDLLOVERRIDES="d3d11,dxgi=n${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+fi
+
+# 4. Optional save (skips the crashing Opening_Sequence).
+if [ -n "${M1000_SAVE:-}" ] && [ -f "$M1000_SAVE" ]; then
+    save_dir="$PREFIX/drive_c/users/steamuser/AppData/LocalLow/Team Cherry/Hollow Knight"
+    mkdir -p "$save_dir"
+    [ -f "$save_dir/user1.dat" ] || cp -f "$M1000_SAVE" "$save_dir/user1.dat"
+fi
+
+# Run windowed at 720p; Steam passes 1920x1080/fullscreen args that would be
+# clipped on a 1280x720 desktop.
+args=()
+skip_next=0
+for a in "$@"; do
+    if [ "$skip_next" = 1 ]; then skip_next=0; continue; fi
+    case "$a" in
+        -screen-width|-screen-height) skip_next=1 ;;
+        -screen-fullscreen) skip_next=1 ;;
+        *) args+=("$a") ;;
+    esac
+done
+# Keep the game borderless-windowed, then ask KWin to make it fullscreen so
+# the game covers the panel without a Unity mode switch.
+exe_name=$(basename "$exe" | tr A-Z a-z)
+case "$exe_name" in
+    hollow_knight.exe) args+=(-screen-fullscreen 0 -screen-width 1280 -screen-height 720) ;;
+esac
+case "$exe_name" in
+    hollow_knight.exe) win_title="Hollow Knight" ;;
+    ddlc.exe) win_title="Doki Doki" ;;
+    *) win_title="" ;;
+esac
+"$P/files/bin-arm64/wine" "$exe" "${args[@]}" &
+wine_pid=$!
+# Unity recreates windows during startup, so keep asking KWin for fullscreen
+# until the game exits.
+(
+    while kill -0 "$wine_pid" 2>/dev/null; do
+        [ -n "$win_title" ] || { sleep 2; continue; }
+        for w in $(xdotool search --name "$win_title" 2>/dev/null); do
+            wmctrl -i -r "$w" -b add,fullscreen >/dev/null 2>&1 || true
+        done
+        sleep 2
+    done
+) &
+wait "$wine_pid"
